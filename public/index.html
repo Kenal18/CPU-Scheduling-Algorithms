@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schedulr: CPU scheduling visualizer (FCFS, SJF, SRTN, Round Robin)</title>
+  <meta name="description" content="Step through FCFS, SJF, SRTN and Round Robin on your own processes. Watch the Gantt chart build, see the ready queue at every tick, and compare all four algorithms.">
+  <meta name="theme-color" content="#ffffff">
+  <meta property="og:title" content="Schedulr: CPU scheduling visualizer">
+  <meta property="og:description" content="Watch FCFS, SJF, SRTN and Round Robin decide, one tick at a time.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="2" y="7" width="14" height="7" rx="2" fill="#f4b9b9"/>
+        <rect x="16" y="7" width="14" height="7" rx="2" fill="#b9d3f4"/>
+        <rect x="2" y="18" width="8" height="7" rx="2" fill="#c8e6bf"/>
+        <rect x="10" y="18" width="20" height="7" rx="2" fill="#f6e3a4"/>
+      </svg>
+      <span class="brand-name">Schedulr</span>
+    </div>
+    <div class="top-actions">
+      <button type="button" class="link" id="shareBtn">Copy share link</button>
+      <button type="button" class="link" id="csvBtn">Download CSV</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="intro" aria-labelledby="pageTitle">
+      <h1 id="pageTitle">See how a CPU decides who goes next</h1>
+      <p class="lede">Pick a scheduling algorithm, add a few processes, and press play. The chart builds one step at a time so you can see exactly why each process runs when it does.</p>
+    </section>
+
+    <section class="step" aria-labelledby="s1">
+      <h2 id="s1"><span class="n">1</span>Choose an algorithm</h2>
+      <div class="algo-tabs" role="radiogroup" aria-label="Scheduling algorithm" id="algoTabs">
+        <button type="button" role="radio" data-algo="fcfs" aria-checked="true" tabindex="0">FCFS</button>
+        <button type="button" role="radio" data-algo="sjf" aria-checked="false" tabindex="-1">SJF</button>
+        <button type="button" role="radio" data-algo="srtn" aria-checked="false" tabindex="-1">SRTN</button>
+        <button type="button" role="radio" data-algo="rr" aria-checked="false" tabindex="-1">Round Robin</button>
+      </div>
+      <div class="algo-note">
+        <p class="algo-title"><strong id="algoName"></strong> <span class="tag" id="algoTag"></span></p>
+        <p id="algoRule"></p>
+        <p class="muted" id="algoBlurb"></p>
+      </div>
+      <div class="options">
+        <label class="field" id="quantumField" hidden>
+          <span>Time quantum <em>(how long each turn lasts)</em></span>
+          <input id="quantum" type="number" min="1" max="20" step="1" value="2" inputmode="numeric">
+        </label>
+        <details class="adv">
+          <summary>Advanced: context-switch cost</summary>
+          <label class="field">
+            <span>Time lost each time the CPU changes process <em>(0 to 5)</em></span>
+            <input id="switchCost" type="number" min="0" max="5" step="1" value="0" inputmode="numeric">
+          </label>
+        </details>
+      </div>
+    </section>
+
+    <div class="banner" id="errorBanner" role="alert" hidden>
+      Some values are out of range. Arrival: 0 to 99. Burst: 1 to 99. Quantum: 1 to 20. Switch cost: 0 to 5. Fix the highlighted boxes to update the results.
+    </div>
+
+    <section class="step workload" aria-labelledby="s2">
+      <div class="step-head">
+        <h2 id="s2"><span class="n">2</span>Add your processes <span class="count" id="procCount"></span></h2>
+        <div class="wl-actions">
+          <select id="preset" aria-label="Load an example">
+            <option value="">Try an example</option>
+            <option value="sample">Mixed lengths</option>
+            <option value="convoy">One long job blocks the rest</option>
+            <option value="sjf">Short jobs sneak in</option>
+            <option value="rr">Round Robin classic</option>
+            <option value="idle">CPU sits idle</option>
+            <option value="tie">Everyone arrives at 0</option>
+          </select>
+          <button type="button" class="btn" id="randomBtn">Random set</button>
+          <button type="button" class="btn" id="clearBtn">Clear all</button>
+        </div>
+      </div>
+      <p class="help"><strong>Arrives at</strong> is when the process shows up. <strong>Runs for</strong> (burst) is how long it needs the CPU. Both are in whole time units.</p>
+      <ul class="tickets" id="procList"></ul>
+      <form class="add" id="addForm" novalidate>
+        <label class="field"><span>Arrives at</span><input id="addArrival" type="number" min="0" max="99" step="1" value="0" inputmode="numeric"></label>
+        <label class="field"><span>Runs for</span><input id="addBurst" type="number" min="1" max="99" step="1" value="4" inputmode="numeric"></label>
+        <button type="submit" class="btn solid">Add process</button>
+        <p class="form-msg" id="formMsg" role="status"></p>
+      </form>
+      <div class="empty" id="emptyState" hidden>
+        <p><strong>No processes yet.</strong> Add one above, or choose an example to get started.</p>
+      </div>
+    </section>
+
+    <div id="results">
+      <section class="step" aria-labelledby="tapeTitle">
+        <h2 id="tapeTitle"><span class="n">3</span>Watch it run</h2>
+        <p class="help">Each coloured block is a process using the CPU. The vertical line is the current time. Anything to its right has not happened yet. Press play, or step through one unit at a time.</p>
+
+        <div class="timeline">
+          <p class="tape-sub" id="tapeSub"></p>
+          <div class="gantt-scroll" id="ganttScroll" tabindex="0" aria-label="Gantt chart, scrollable">
+            <div class="gantt" id="gantt">
+              <div class="gantt-inner">
+                <div class="track" id="track"></div>
+                <div class="mask" id="mask"></div>
+                <div class="playhead" id="playhead"></div>
+                <div class="axis" id="axis"></div>
+              </div>
+            </div>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span><i class="sw sw-idle"></i>CPU idle</span>
+            <span><i class="sw sw-cs"></i>Context switch</span>
+          </div>
+
+          <div class="transport">
+            <div class="t-buttons">
+              <button type="button" class="icon" id="bReset" aria-label="Back to start" title="Back to start">
+                <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>
+              </button>
+              <button type="button" class="icon" id="bBack" aria-label="Step back one unit" title="Step back (Left arrow)">
+                <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button type="button" class="icon play" id="bPlay" aria-label="Play" title="Play or pause (Space)">
+                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              </button>
+              <button type="button" class="icon" id="bFwd" aria-label="Step forward one unit" title="Step forward (Right arrow)">
+                <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button type="button" class="icon" id="bEnd" aria-label="Jump to the end" title="Jump to the end">
+                <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>
+              </button>
+            </div>
+            <input type="range" id="scrub" min="0" max="1" step="1" value="0" aria-label="Time position">
+            <output class="clock" id="clock" for="scrub">t = 0 of 0</output>
+            <label class="speed">
+              <span>Speed</span>
+              <select id="speed" aria-label="Playback speed">
+                <option value="0.5">Slow</option>
+                <option value="1" selected>Normal</option>
+                <option value="2">Fast</option>
+                <option value="4">Very fast</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="live" aria-labelledby="liveTitle">
+          <h3 id="liveTitle">What is happening at t = <span id="liveT">0</span></h3>
+          <p class="narrate" id="narrate"></p>
+          <div class="live-grid">
+            <div class="live-col">
+              <div class="cpu">
+                <div class="cpu-label">CPU</div>
+                <div class="cpu-core" id="cpuCore"></div>
+              </div>
+              <div class="lane">
+                <h4>Waiting in line <span class="lane-hint" id="queueHint"></span></h4>
+                <div class="tokens" id="queueLane"></div>
+              </div>
+              <div class="lane">
+                <h4>Not arrived yet</h4>
+                <div class="tokens" id="futureLane"></div>
+              </div>
+              <div class="lane">
+                <h4>Finished</h4>
+                <div class="tokens" id="doneLane"></div>
+              </div>
+            </div>
+            <div class="live-col">
+              <h4>Progress</h4>
+              <ul class="progress" id="progress" aria-label="Progress of each process"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" aria-labelledby="metricsTitle">
+        <h2 id="metricsTitle"><span class="n">4</span>Read the results</h2>
+        <dl class="stats" id="stats"></dl>
+
+        <div class="detail">
+          <div class="tabs" role="tablist" aria-label="Detail views" id="detailTabs">
+            <button type="button" role="tab" id="tab-table" aria-controls="panel-table" aria-selected="true" data-tab="table">Per process</button>
+            <button type="button" role="tab" id="tab-log" aria-controls="panel-log" aria-selected="false" tabindex="-1" data-tab="log">Why it chose that</button>
+            <button type="button" role="tab" id="tab-compare" aria-controls="panel-compare" aria-selected="false" tabindex="-1" data-tab="compare">Compare all four</button>
+          </div>
+          <div role="tabpanel" id="panel-table" aria-labelledby="tab-table" class="panel">
+            <div class="table-wrap"><table id="resultTable"></table></div>
+            <p class="help">Turnaround = completion &minus; arrival. Waiting = turnaround &minus; burst. Response = first run &minus; arrival.</p>
+          </div>
+          <div role="tabpanel" id="panel-log" aria-labelledby="tab-log" class="panel" hidden>
+            <p class="help">Every decision the scheduler made, in order. Select a line to jump the timeline to that moment.</p>
+            <ol class="log" id="logList"></ol>
+          </div>
+          <div role="tabpanel" id="panel-compare" aria-labelledby="tab-compare" class="panel" hidden>
+            <p class="help" id="compareNote"></p>
+            <div class="table-wrap"><table id="compareTable"></table></div>
+            <ul class="verdicts" id="verdicts"></ul>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <p>Ties are broken by arrival time, then by process number. In Round Robin, a process arriving at the same moment a quantum ends queues ahead of the one that was interrupted. A context switch is charged whenever the CPU moves from one process to a different one.</p>
+    <p>Shortcuts: Space plays or pauses, Left and Right arrows step, Home and End jump. Your work is saved in this browser.</p>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="js/scheduler.js" defer></script>
+  <script src="js/app.js" defer></script>
+</body>
+</html>

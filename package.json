@@ -1,0 +1,11 @@
+{
+  "name": "schedulr",
+  "version": "1.0.0",
+  "description": "CPU scheduling visualizer: FCFS, SJF, SRTN and Round Robin.",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node tests/scheduler.test.js",
+    "start": "npx --yes serve public"
+  }
+}
